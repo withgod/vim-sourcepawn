@@ -6,13 +6,27 @@ SourcePawn support files.
 
 - filetype detect
 - syntax highlight
-- makeprog
+- errorformat (makeprg set your self)
 
 ## Install
 
-manual install or use Bundle(better script manager)
+
+### manual install
+
+download zip and extract your $HOME/.vim directory
+
+> https://github.com/withgod/vim-sourcepawn/zipball/master
+
+### Vundle
 
 > Bundle 'withgod/vim-sourcepawn.git'
+
+### Option
+
+put your .vimrc
+
+	" for sourcepawn quickfix
+	au FileType sourcepawn setlocal makeprg=/path/to/spcomp\ %
 
 ## Changelog
 
