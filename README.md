@@ -30,6 +30,12 @@ put your .vimrc
 
 ## Changelog
 
+### 2013-09-30 pmrowla
+
+- Sourcemod 1.5 API support
+- C-style syntax to use whats in c.vim from vim 7.3.
+- https://github.com/withgod/vim-sourcepawn/pull/1
+
 ### 2012-02-29 withgod
 
 - few fix, make package and hosting github.
