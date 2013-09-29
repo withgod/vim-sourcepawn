@@ -28,9 +28,9 @@ HEADER
 
 $header .= <<'HEADER';
 " Quit when a (custom) syntax file was already loaded
-"if exists("b:current_syntax")
-"  finish
-"endif
+if exists("b:current_syntax")
+  finish
+endif
 
 " A bunch of useful C keywords
 syn keyword	cStatement	goto break return continue assert state sleep exit
@@ -40,8 +40,13 @@ syn keyword	cRepeat		while for do
 
 syn keyword	cTodo		contained TODO FIXME XXX
 
+" It's easy to accidentally add a space after a backslash that was intended
+" for line continuation.  Some compilers allow it, which makes it
+" unpredicatable and should be avoided.
+syn match	cBadContinuation contained "\\\s\+$"
+
 " cCommentGroup allows adding matches for special things in comments
-syn cluster	cCommentGroup	contains=cTodo
+syn cluster	cCommentGroup	contains=cTodo,cBadContinuation
 
 " String and Character constants
 " Highlight special characters (those which have a backslash) differently
@@ -89,12 +94,17 @@ if exists("c_space_errors")
 endif
 
 " This should be before cErrInParen to avoid problems with #define ({ xxx })
-syntax region	cBlock		start="{" end="}" transparent fold
+if exists("c_curly_error")
+  syntax match cCurlyError "}"
+  syntax region	cBlock		start="{" end="}" contains=ALLBUT,cCurlyError,@cParenGroup,cErrInParen,cCppParen,cErrInBracket,cCppBracket,cCppString,@Spell fold
+else
+  syntax region	cBlock		start="{" end="}" transparent fold
+endif
 
 "catch errors caused by wrong parenthesis and brackets
 " also accept <% for {, %> for }, <: for [ and :> for ] (C99)
 " But avoid matching <::.
-syn cluster	cParenGroup	contains=cParenError,cIncluded,cSpecial,cCommentSkip,cCommentString,cComment2String,@cCommentGroup,cCommentStartError,cUserCont,cUserLabel,cCommentSkip,cCppOut,cCppOut2,cCppSkip,cFormat,cNumber,cFloat,cNumbersCom
+syn cluster	cParenGroup	contains=cParenError,cIncluded,cSpecial,cCommentSkip,cCommentString,cComment2String,@cCommentGroup,cCommentStartError,cUserCont,cUserLabel,cBitField,cOctalZero,cCppOut,cCppOut2,cCppSkip,cFormat,cNumber,cFloat,cOctal,cOctalError,cNumbersCom
 if exists("c_no_curly_error")
   syn region	cParen		transparent start='(' end=')' contains=ALLBUT,@cParenGroup,cCppParen,cCppString,@Spell
   " cCppParen: same as cParen but ends at end-of-line; used in cDefine
@@ -121,12 +131,15 @@ endif
 
 "integer number, or floating point number without a dot and with "f".
 syn case ignore
-syn match	cNumbers	display transparent "\<\d\|\.\d" contains=cNumber,cFloat
-" Same (for comments)
-syn match	cNumbersCom	display contained transparent "\<\d\|\.\d" contains=cNumber,cFloat
+syn match	cNumbers	display transparent "\<\d\|\.\d" contains=cNumber,cFloat,cOctalError,cOctal
+" Same, but without octal error (for comments)
+syn match	cNumbersCom	display contained transparent "\<\d\|\.\d" contains=cNumber,cFloat,cOctal
 syn match	cNumber		display contained "\d\+\(u\=l\{0,2}\|ll\=u\)\>"
 "hex number
 syn match	cNumber		display contained "0x\x\+\(u\=l\{0,2}\|ll\=u\)\>"
+" Flag the first zero of an octal number as something special
+syn match	cOctal		display contained "0\o\+\(u\=l\{0,2}\|ll\=u\)\>" contains=cOctalZero
+syn match	cOctalZero	display contained "\<0"
 syn match	cFloat		display contained "\d\+f"
 "floating point number, with dot, optional exponent
 syn match	cFloat		display contained "\d\+\.\d*\(e[-+]\=\d\+\)\=[fl]\="
@@ -141,6 +154,8 @@ if !exists("c_no_c99")
   syn match	cFloat		display contained "0x\x\+\.\=p[-+]\=\d\+[fl]\=\>"
 endif
 
+" flag an octal number with wrong digits
+syn match	cOctalError	display contained "0\o*[89]\d*"
 syn case match
 
 if exists("c_comment_strings")
@@ -163,9 +178,9 @@ if exists("c_comment_strings")
 else
   syn region	cCommentL	start="//" skip="\\$" end="$" keepend contains=@cCommentGroup,cSpaceError,@Spell
   if exists("c_no_comment_fold")
-    syn region	cComment	matchgroup=cCommentStart start="/\*" end="\*/" contains=@cCommentGroup,cCommentStartError,cSpaceError,@Spell
+    syn region	cComment	matchgroup=cCommentStart start="/\*" end="\*/" contains=@cCommentGroup,cCommentStartError,cSpaceError,@Spell extend
   else
-    syn region	cComment	matchgroup=cCommentStart start="/\*" end="\*/" contains=@cCommentGroup,cCommentStartError,cSpaceError,@Spell fold
+    syn region	cComment	matchgroup=cCommentStart start="/\*" end="\*/" contains=@cCommentGroup,cCommentStartError,cSpaceError,@Spell fold extend
   endif
 endif
 " keep a // comment separately, it terminates a preproc. conditional
@@ -187,7 +202,7 @@ HEADER
 
 my $footer = <<'FOOTER';
 " Accept %: for # (C99)
-syn region	cPreCondit	start="^\s*\(%:\|#\)\s*\(if\|ifdef\|ifndef\|elif\)\>" skip="\\$" end="$" end="//"me=s-1 contains=cComment,cCppString,cCharacter,cCppParen,cParenError,cNumbers,cCommentError,cSpaceError
+syn region      cPreCondit      start="^\s*\(%:\|#\)\s*\(if\|ifdef\|ifndef\|elif\)\>" skip="\\$" end="$"  keepend contains=cComment,cCommentL,cCppString,cCharacter,cCppParen,cParenError,cNumbers,cCommentError,cSpaceError
 syn match	cPreCondit	display "^\s*\(%:\|#\)\s*\(else\|endif\)\>"
 if !exists("c_no_if0")
   if !exists("c_no_if0_fold")
@@ -200,14 +215,14 @@ if !exists("c_no_if0")
 endif
 syn region	cIncluded	display contained start=+"+ skip=+\\\\\|\\"+ end=+"+
 syn match	cIncluded	display contained "<[^>]*>"
-syn match	cInclude	display "^\s*\(%:\|#\)\s*\(include\>\|tryinclude\>\)\s*["<]" contains=cIncluded
+syn match	cInclude	display "^\s*\(%:\|#\)\s*include\>\s*["<]" contains=cIncluded
 "syn match cLineSkip	"\\$"
 syn cluster	cPreProcGroup	contains=cPreCondit,cIncluded,cInclude,cDefine,cErrInParen,cErrInBracket,cUserLabel,cSpecial,cOctalZero,cCppOut,cCppOut2,cCppSkip,cFormat,cNumber,cFloat,cOctal,cOctalError,cNumbersCom,cString,cCommentSkip,cCommentString,cComment2String,@cCommentGroup,cCommentStartError,cParen,cBracket,cMulti
-syn region	cDefine		start="^\s*\(%:\|#\)\s*\(define\|undef\)\>" skip="\\$" end="$" end="//"me=s-1 keepend contains=ALLBUT,@cPreProcGroup,@Spell
-syn region	cPreProc	start="^\s*\(%:\|#\)\s*\(assert\>\|emit\>\|endinput\>\|endscript\>\|pragma\>\|line\>\|section\>\|warning\>\|warn\>\|error\>\)" skip="\\$" end="$" keepend contains=ALLBUT,@cPreProcGroup,@Spell
+syn region	cDefine		start="^\s*\(%:\|#\)\s*\(define\|undef\)\>" skip="\\$" end="$" keepend contains=ALLBUT,@cPreProcGroup,@Spell
+syn region	cPreProc	start="^\s*\(%:\|#\)\s*\(pragma\>\|line\>\|warning\>\|warn\>\|error\>\)" skip="\\$" end="$" keepend contains=ALLBUT,@cPreProcGroup,@Spell
 
 " Highlight User Labels
-syn cluster	cMultiGroup	contains=cIncluded,cSpecial,cCommentSkip,cCommentString,cComment2String,@cCommentGroup,cCommentStartError,cUserCont,cUserLabel,cCppOut,cCppOut2,cCppSkip,cFormat,cNumber,cFloat,cNumbersCom,cCppParen,cCppBracket,cCppString
+syn cluster	cMultiGroup	contains=cIncluded,cSpecial,cCommentSkip,cCommentString,cComment2String,@cCommentGroup,cCommentStartError,cUserCont,cUserLabel,cBitField,cOctalZero,cCppOut,cCppOut2,cCppSkip,cFormat,cNumber,cFloat,cOctal,cOctalError,cNumbersCom,cCppParen,cCppBracket,cCppString
 syn region	cMulti		transparent start='?' skip='::' end=':' contains=ALLBUT,@cMultiGroup,@Spell
 " Avoid matching foo::bar() in C++ by requiring that the next char is not ':'
 syn cluster	cLabelGroup	contains=cUserLabel
@@ -218,10 +233,9 @@ syn match	cUserCont	display ";\s*\I\i*\s*:[^:]"me=e-1 contains=@cLabelGroup
 
 syn match	cUserLabel	display "\I\i*" contained
 
-" C++ extentions
-syn keyword cppStatement	new decl
-syn keyword cppAccess		public
-syn keyword cppOperator		operator
+" Avoid recognizing most bitfields as labels
+syn match	cBitField	display "^\s*\I\i*\s*:\s*[1-9]"me=e-1 contains=cType
+syn match	cBitField	display ";\s*\I\i*\s*:\s*[1-9]"me=e-1 contains=cType
 
 if exists("c_minlines")
   let b:c_minlines = c_minlines
@@ -232,7 +246,11 @@ else
     let b:c_minlines = 15	" mostly for () constructs
   endif
 endif
-exec "syn sync ccomment cComment minlines=" . b:c_minlines
+if exists("c_curly_error")
+  syn sync fromstart
+else
+  exec "syn sync ccomment cComment minlines=" . b:c_minlines
+endif
 
 " Define the default highlighting.
 " Only used when an item doesn't have highlighting yet
@@ -247,7 +265,10 @@ hi def link cRepeat		Repeat
 hi def link cCharacter		Character
 hi def link cSpecialCharacter	cSpecial
 hi def link cNumber		Number
+hi def link cOctal		Number
+hi def link cOctalZero		PreProc	 " link this to Error if you want
 hi def link cFloat		Float
+hi def link cOctalError		cError
 hi def link cParenError		cError
 hi def link cErrInParen		cError
 hi def link cErrInBracket	cError
@@ -255,6 +276,7 @@ hi def link cCommentError	cError
 hi def link cCommentStartError	cError
 hi def link cSpaceError		cError
 hi def link cSpecialError	cError
+hi def link cCurlyError		cError
 hi def link cOperator		Operator
 hi def link cStructure		Structure
 hi def link cStorageClass	StorageClass
@@ -265,7 +287,7 @@ hi def link cIncluded		cString
 hi def link cError		Error
 hi def link cStatement		Statement
 hi def link cPreCondit		PreCondit
-hi def link cTag 		Type
+hi def link cType		Type
 hi def link cConstant		Constant
 hi def link cCommentString	cString
 hi def link cComment2String	cString
@@ -274,13 +296,10 @@ hi def link cString		String
 hi def link cComment		Comment
 hi def link cSpecial		SpecialChar
 hi def link cTodo		Todo
+hi def link cBadContinuation	Error
 hi def link cCppSkip		cCppOut
 hi def link cCppOut2		cCppOut
 hi def link cCppOut		Comment
-
-hi def link cppAccess		cppStatement
-hi def link cppOperator		Operator
-hi def link cppStatement	Statement
 
 hi def link cFunction   	Function
 hi def link cForward    	Function
